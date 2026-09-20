@@ -1,0 +1,8 @@
+.env
+server.log
+server.err
+test_import.md
+__pycache__/
+*.pyc
+.venv/
+venv/

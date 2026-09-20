@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>md → Logseq</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    h1 { font-size: 1.6rem; font-weight: 600; margin-bottom: 6px; letter-spacing: -0.5px; }
+    .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 32px; }
+
+    /* Status bar */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      margin-bottom: 28px;
+      padding: 8px 12px;
+      background: #161b27;
+      border-radius: 8px;
+      border: 1px solid #2d3748;
+      width: 100%;
+      max-width: 620px;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
+    .dot.ok    { background: #22c55e; }
+    .dot.error { background: #ef4444; }
+
+    /* Global options bar */
+    #options-bar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      width: 100%;
+      max-width: 620px;
+      flex-wrap: wrap;
+    }
+
+    label.toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      cursor: pointer;
+      user-select: none;
+    }
+    label.toggle input[type="checkbox"] { accent-color: #6366f1; width: 15px; height: 15px; }
+
+    /* Groups container */
+    #groups {
+      width: 100%;
+      max-width: 620px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Group card */
+    .group-card {
+      background: #1e2433;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      background: #161b27;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    .group-header .tag-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    .group-header .tag-input {
+      flex: 1;
+      background: #1e2433;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.88rem;
+      color: #e2e8f0;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .group-header .tag-input:focus { border-color: #6366f1; }
+    .group-header .tag-input::placeholder { color: #475569; }
+
+    .group-header .tag-badge {
+      font-size: 0.72rem;
+      background: #312e81;
+      color: #a5b4fc;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .btn-remove-group {
+      background: none;
+      border: none;
+      color: #475569;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-remove-group:hover { color: #ef4444; background: #1e2433; }
+
+    .group-body { padding: 14px 16px; }
+
+    /* Drop zone inside group */
+    .drop-zone {
+      border: 2px dashed #2d3748;
+      border-radius: 8px;
+      padding: 22px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 12px;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .drop-zone.dragover { border-color: #6366f1; background: #1a1f35; color: #a5b4fc; }
+    .drop-zone span { color: #6366f1; font-weight: 500; }
+
+    /* File list inside group */
+    .file-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .file-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #161b27;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.82rem;
+    }
+    .file-list li .fname { color: #cbd5e1; }
+    .file-list li .fsize { color: #475569; font-size: 0.75rem; margin-left: 8px; }
+    .file-list li .fremove {
+      background: none; border: none; color: #475569;
+      cursor: pointer; font-size: 0.85rem; padding: 1px 4px;
+    }
+    .file-list li .fremove:hover { color: #ef4444; }
+
+    /* Add group button */
+    #btn-add-group {
+      width: 100%;
+      max-width: 620px;
+      padding: 11px;
+      background: transparent;
+      color: #6366f1;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: 2px dashed #312e81;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      margin-top: 4px;
+    }
+    #btn-add-group:hover { background: #1a1f35; border-color: #6366f1; }
+
+    /* Import button */
+    #btn-import {
+      width: 100%;
+      max-width: 620px;
+      padding: 12px;
+      background: #6366f1;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      margin-top: 20px;
+    }
+    #btn-import:hover:not(:disabled) { background: #4f46e5; }
+    #btn-import:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Results */
+    #results {
+      width: 100%;
+      max-width: 620px;
+      margin-top: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .result-group { }
+
+    .result-group-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #a5b4fc;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .result-group-label::before {
+      content: "";
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #6366f1;
+    }
+
+    .result-files { display: flex; flex-direction: column; gap: 5px; }
+
+    .result-item {
+      background: #161b27;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 9px 13px;
+      font-size: 0.83rem;
+    }
+    .result-item.success { border-color: #166534; }
+    .result-item.error   { border-color: #7f1d1d; }
+    .result-item.warn    { border-color: #78350f; }
+
+    .result-item .result-title { font-weight: 600; margin-bottom: 2px; }
+    .result-item.success .result-title { color: #4ade80; }
+    .result-item.error   .result-title { color: #f87171; }
+    .result-item.warn    .result-title { color: #fbbf24; }
+    .result-item .result-detail { color: #64748b; }
+
+    /* Hidden file input */
+    .file-input-hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<h1>md → Logseq</h1>
+<p class="subtitle">Importa archivos Markdown directamente a tu grafo de Logseq</p>
+
+<div id="status-bar">
+  <div class="dot" id="conn-dot"></div>
+  <span id="conn-text">Verificando conexión con Logseq...</span>
+</div>
+
+<div id="options-bar">
+  <label class="toggle">
+    <input type="checkbox" id="opt-overwrite" />
+    Sobreescribir si ya existe
+  </label>
+  <label class="toggle">
+    <input type="checkbox" id="opt-filename-title" />
+    Usar nombre de archivo como título
+  </label>
+</div>
+
+<div id="groups"></div>
+
+<button id="btn-add-group">+ Nuevo grupo</button>
+<button id="btn-import" disabled>Importar todo a Logseq</button>
+
+<div id="results"></div>
+
+<script>
+  const API = "http://127.0.0.1:8000";
+
+  // ── State ─────────────────────────────────────────────────────────────────────
+  let groups = [];
+  let nextId = 1;
+
+  // ── Health check ──────────────────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${API}/health`);
+      const data = await res.json();
+      const dot = document.getElementById("conn-dot");
+      const text = document.getElementById("conn-text");
+      if (data.connected) {
+        dot.className = "dot ok";
+        text.textContent = `Logseq conectado · ${data.logseq_url}`;
+      } else {
+        dot.className = "dot error";
+        text.textContent = "Logseq no responde. ¿Está abierto y con HTTP API activa?";
+      }
+    } catch {
+      document.getElementById("conn-dot").className = "dot error";
+      document.getElementById("conn-text").textContent =
+        "Backend no disponible. Ejecuta: uvicorn main:app --reload";
+    }
+  }
+  checkHealth();
+
+  // ── Group management ──────────────────────────────────────────────────────────
+  function createGroup(tag = "") {
+    const group = { id: nextId++, tag, files: [] };
+    groups.push(group);
+    renderGroups();
+    return group;
+  }
+
+  function removeGroup(id) {
+    groups = groups.filter(g => g.id !== id);
+    renderGroups();
+    updateImportButton();
+  }
+
+  function addFilesToGroup(id, newFiles) {
+    const group = groups.find(g => g.id === id);
+    if (!group) return;
+    newFiles
+      .filter(f => f.name.toLowerCase().endsWith(".md"))
+      .forEach(f => {
+        if (!group.files.find(x => x.name === f.name)) group.files.push(f);
+      });
+    renderGroup(id);
+    updateImportButton();
+  }
+
+  function removeFileFromGroup(groupId, filename) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    group.files = group.files.filter(f => f.name !== filename);
+    renderGroup(groupId);
+    updateImportButton();
+  }
+
+  function updateGroupTag(id, tag) {
+    const group = groups.find(g => g.id === id);
+    if (group) {
+      group.tag = tag;
+      // update badge only
+      const badge = document.querySelector(`[data-group-id="${id}"] .tag-badge`);
+      if (badge) badge.textContent = tag ? `#${tag}` : "sin tag";
+    }
+  }
+
+  function totalFiles() {
+    return groups.reduce((sum, g) => sum + g.files.length, 0);
+  }
+
+  function updateImportButton() {
+    document.getElementById("btn-import").disabled = totalFiles() === 0;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+  function renderGroups() {
+    const container = document.getElementById("groups");
+    // Remove cards for deleted groups
+    container.querySelectorAll(".group-card").forEach(card => {
+      const id = Number(card.dataset.groupId);
+      if (!groups.find(g => g.id === id)) card.remove();
+    });
+    // Add cards for new groups (in order)
+    groups.forEach((group, i) => {
+      let card = container.querySelector(`[data-group-id="${group.id}"]`);
+      if (!card) {
+        card = buildGroupCard(group);
+        // Insert at correct position
+        const cards = [...container.querySelectorAll(".group-card")];
+        if (cards[i]) container.insertBefore(card, cards[i]);
+        else container.appendChild(card);
+      }
+    });
+    updateImportButton();
+  }
+
+  function buildGroupCard(group) {
+    const card = document.createElement("div");
+    card.className = "group-card";
+    card.dataset.groupId = group.id;
+    card.innerHTML = `
+      <div class="group-header">
+        <span class="tag-label">tag</span>
+        <input
+          class="tag-input"
+          type="text"
+          placeholder="nombre del tag (ej: trabajo)"
+          value="${escHtml(group.tag)}"
+          data-gid="${group.id}"
+        />
+        <span class="tag-badge">${group.tag ? "#" + escHtml(group.tag) : "sin tag"}</span>
+        <button class="btn-remove-group" data-gid="${group.id}" title="Eliminar grupo">✕</button>
+      </div>
+      <div class="group-body">
+        <div class="drop-zone" data-gid="${group.id}">
+          Arrastra archivos <span>.md</span> aquí
+          o <span class="browse-link" data-gid="${group.id}" style="cursor:pointer">selecciona</span>
+        </div>
+        <ul class="file-list" data-gid="${group.id}"></ul>
+      </div>
+      <input type="file" class="file-input-hidden" multiple accept=".md" data-gid="${group.id}" />
+    `;
+
+    // Tag input sync
+    card.querySelector(".tag-input").addEventListener("input", e => {
+      updateGroupTag(group.id, e.target.value.trim());
+    });
+
+    // Remove group
+    card.querySelector(".btn-remove-group").addEventListener("click", () => removeGroup(group.id));
+
+    // Drop zone
+    const zone = card.querySelector(".drop-zone");
+    zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+      addFilesToGroup(group.id, [...e.dataTransfer.files]);
+    });
+    zone.addEventListener("click", () => card.querySelector(".file-input-hidden").click());
+
+    // Browse link (prevent double-trigger from zone click)
+    card.querySelector(".browse-link").addEventListener("click", e => {
+      e.stopPropagation();
+      card.querySelector(".file-input-hidden").click();
+    });
+
+    // Hidden file input
+    card.querySelector(".file-input-hidden").addEventListener("change", e => {
+      addFilesToGroup(group.id, [...e.target.files]);
+      e.target.value = "";
+    });
+
+    renderFileList(card, group);
+    return card;
+  }
+
+  function renderGroup(id) {
+    const group = groups.find(g => g.id === id);
+    if (!group) return;
+    const card = document.querySelector(`[data-group-id="${id}"]`);
+    if (!card) return;
+    renderFileList(card, group);
+  }
+
+  function renderFileList(card, group) {
+    const ul = card.querySelector(".file-list");
+    ul.innerHTML = "";
+    group.files.forEach(f => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <span class="fname">${escHtml(f.name)}</span>
+        <span class="fsize">${formatBytes(f.size)}</span>
+        <button class="fremove" title="Quitar">✕</button>
+      `;
+      li.querySelector(".fremove").addEventListener("click", () => removeFileFromGroup(group.id, f.name));
+      ul.appendChild(li);
+    });
+  }
+
+  // ── Import ────────────────────────────────────────────────────────────────────
+  document.getElementById("btn-add-group").addEventListener("click", () => createGroup());
+
+  document.getElementById("btn-import").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-import");
+    const overwrite = document.getElementById("opt-overwrite").checked;
+    const filenameTitle = document.getElementById("opt-filename-title").checked;
+    const resultsEl = document.getElementById("results");
+
+    btn.disabled = true;
+    btn.textContent = "Importando...";
+    resultsEl.innerHTML = "";
+
+    for (const group of groups) {
+      if (group.files.length === 0) continue;
+
+      const groupSection = document.createElement("div");
+      groupSection.className = "result-group";
+      groupSection.innerHTML = `
+        <div class="result-group-label">${escHtml(group.tag || "sin tag")}</div>
+        <div class="result-files"></div>
+      `;
+      resultsEl.appendChild(groupSection);
+      const filesEl = groupSection.querySelector(".result-files");
+
+      for (const file of group.files) {
+        const item = document.createElement("div");
+        item.className = "result-item";
+        item.innerHTML = `<div class="result-title">⏳ ${escHtml(file.name)}</div>`;
+        filesEl.appendChild(item);
+
+        try {
+          const form = new FormData();
+          form.append("file", file);
+
+          const params = new URLSearchParams({
+            overwrite: overwrite,
+            filename_as_title: filenameTitle,
+            tags: group.tag.trim(),
+          });
+
+          const res = await fetch(`${API}/import?${params}`, { method: "POST", body: form });
+
+          if (res.ok) {
+            const data = await res.json();
+            item.className = "result-item success";
+            item.innerHTML = `
+              <div class="result-title">✓ ${escHtml(data.page)}</div>
+              <div class="result-detail">${data.blocks_inserted} bloques insertados${data.errors.length ? ` · ${data.errors.length} error(es)` : ""}</div>
+            `;
+          } else {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            const detail = typeof err.detail === "object" ? err.detail.message : err.detail;
+            const isConflict = res.status === 409;
+            item.className = `result-item ${isConflict ? "warn" : "error"}`;
+            item.innerHTML = `
+              <div class="result-title">${isConflict ? "⚠ Ya existe" : "✗ Error"} · ${escHtml(file.name)}</div>
+              <div class="result-detail">${escHtml(String(detail))}</div>
+            `;
+          }
+        } catch (e) {
+          item.className = "result-item error";
+          item.innerHTML = `
+            <div class="result-title">✗ Error de red · ${escHtml(file.name)}</div>
+            <div class="result-detail">${escHtml(e.message)}</div>
+          `;
+        }
+      }
+    }
+
+    btn.textContent = "Importar todo a Logseq";
+    btn.disabled = totalFiles() === 0;
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function formatBytes(b) {
+    if (b < 1024) return `${b} B`;
+    if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1048576).toFixed(1)} MB`;
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // Start with one group by default
+  createGroup();
+</script>
+</body>
+</html>
