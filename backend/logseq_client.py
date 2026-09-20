@@ -1,5 +1,9 @@
+import asyncio
 import httpx
 from typing import Optional
+
+# Logseq's HTTP API is single-threaded; serialize all calls globally.
+_api_sem = asyncio.Semaphore(1)
 
 
 class LogseqClient:
@@ -11,12 +15,13 @@ class LogseqClient:
         }
 
     async def _call(self, method: str, args: list) -> dict:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/api",
-                json={"method": method, "args": args},
-                headers=self.headers,
-            )
+        async with _api_sem:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/api",
+                    json={"method": method, "args": args},
+                    headers=self.headers,
+                )
         response.raise_for_status()
         return response.json()
 
