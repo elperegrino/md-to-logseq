@@ -488,8 +488,10 @@
     const resultsEl = document.getElementById("results");
 
     btn.disabled = true;
-    btn.textContent = "Importando...";
     resultsEl.innerHTML = "";
+
+    // ── 1. Pre-render all result items (all pending) ──────────────────────────
+    const tasks = [];
 
     for (const group of groups) {
       if (group.files.length === 0) continue;
@@ -509,44 +511,65 @@
         item.innerHTML = `<div class="result-title">⏳ ${escHtml(file.name)}</div>`;
         filesEl.appendChild(item);
 
-        try {
-          const form = new FormData();
-          form.append("file", file);
+        const params = new URLSearchParams({
+          overwrite,
+          filename_as_title: filenameTitle,
+          tags: group.tag.trim(),
+        });
 
-          const params = new URLSearchParams({
-            overwrite: overwrite,
-            filename_as_title: filenameTitle,
-            tags: group.tag.trim(),
-          });
-
-          const res = await fetch(`${API}/import?${params}`, { method: "POST", body: form });
-
-          if (res.ok) {
-            const data = await res.json();
-            item.className = "result-item success";
-            item.innerHTML = `
-              <div class="result-title">✓ ${escHtml(data.page)}</div>
-              <div class="result-detail">${data.blocks_inserted} bloques insertados${data.errors.length ? ` · ${data.errors.length} error(es)` : ""}</div>
-            `;
-          } else {
-            const err = await res.json().catch(() => ({ detail: res.statusText }));
-            const detail = typeof err.detail === "object" ? err.detail.message : err.detail;
-            const isConflict = res.status === 409;
-            item.className = `result-item ${isConflict ? "warn" : "error"}`;
-            item.innerHTML = `
-              <div class="result-title">${isConflict ? "⚠ Ya existe" : "✗ Error"} · ${escHtml(file.name)}</div>
-              <div class="result-detail">${escHtml(String(detail))}</div>
-            `;
-          }
-        } catch (e) {
-          item.className = "result-item error";
-          item.innerHTML = `
-            <div class="result-title">✗ Error de red · ${escHtml(file.name)}</div>
-            <div class="result-detail">${escHtml(e.message)}</div>
-          `;
-        }
+        tasks.push({ file, item, params });
       }
     }
+
+    // ── 2. Run with concurrency limit ─────────────────────────────────────────
+    const total = tasks.length;
+    let done = 0;
+
+    async function runTask({ file, item, params }) {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`${API}/import?${params}`, { method: "POST", body: form });
+
+        if (res.ok) {
+          const data = await res.json();
+          item.className = "result-item success";
+          item.innerHTML = `
+            <div class="result-title">✓ ${escHtml(data.page)}</div>
+            <div class="result-detail">${data.blocks_inserted} bloques insertados${data.errors.length ? ` · ${data.errors.length} error(es)` : ""}</div>
+          `;
+        } else {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          const detail = typeof err.detail === "object" ? err.detail.message : err.detail;
+          const isConflict = res.status === 409;
+          item.className = `result-item ${isConflict ? "warn" : "error"}`;
+          item.innerHTML = `
+            <div class="result-title">${isConflict ? "⚠ Ya existe" : "✗ Error"} · ${escHtml(file.name)}</div>
+            <div class="result-detail">${escHtml(String(detail))}</div>
+          `;
+        }
+      } catch (e) {
+        item.className = "result-item error";
+        item.innerHTML = `
+          <div class="result-title">✗ Error de red · ${escHtml(file.name)}</div>
+          <div class="result-detail">${escHtml(e.message)}</div>
+        `;
+      }
+      done++;
+      btn.textContent = `Importando ${done} / ${total}...`;
+    }
+
+    const CONCURRENCY = 3;
+    btn.textContent = `Importando 0 / ${total}...`;
+
+    // Worker pool: CONCURRENCY workers pulling from the task queue
+    let idx = 0;
+    async function worker() {
+      while (idx < tasks.length) {
+        await runTask(tasks[idx++]);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, worker));
 
     btn.textContent = "Importar todo a Logseq";
     btn.disabled = totalFiles() === 0;
